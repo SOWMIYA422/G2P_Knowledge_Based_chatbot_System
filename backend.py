@@ -30,20 +30,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Models
-try:
-    retriever = BioRetriever(DATASET_PATH)
-    predictor = PhenotypePredictor(DATASET_PATH)
-    predictor.train()
-    enhanced_engine = EnhancedRecommendationEngine(retriever, predictor)
-    logger.info("✅ Models initialized successfully in backend")
-except Exception as e:
-    logger.error(f"❌ Initialization failed: {e}")
-    # Don't stop the app, just keep going and handle 500 later
+# Global models (Lazy Loaded)
+retriever = None
+predictor = None
+enhanced_engine = None
+
+def load_models():
+    global retriever, predictor, enhanced_engine
+    if retriever is None:
+        try:
+            logger.info("⏳ Loading models (lazy-load)...")
+            retriever = BioRetriever(DATASET_PATH)
+            predictor = PhenotypePredictor(DATASET_PATH)
+            predictor.train()
+            enhanced_engine = EnhancedRecommendationEngine(retriever, predictor)
+            logger.info("✅ Models initialized successfully")
+        except Exception as e:
+            logger.error(f"❌ Lazy-load initialization failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Model initialization failed: {e}")
 
 @app.get("/api/init")
 async def init_data():
     """Returns basic configuration and available genotypes"""
+    load_models()
     genotype_col = "Variety" if "Variety" in retriever.df.columns else "Genotype"
     return {
         "genotypes": retriever.df[genotype_col].unique().tolist(),
@@ -55,6 +64,7 @@ async def init_data():
 async def search_genotypes(query: str):
     """Search for genotypes based on traits, varieties, or locations.
     Supports semantic phrases like 'high yield', 'drought tolerant', 'tall plant', etc."""
+    load_models()
     if not query or len(query) < 2:
         return []
 
@@ -169,6 +179,7 @@ async def search_genotypes(query: str):
 @app.get("/api/genotype/{name}")
 async def get_genotype_details(name: str):
     """Get detailed traits for a specific variety"""
+    load_models()
     genotype_col = "Variety" if "Variety" in retriever.df.columns else "Genotype"
     row = retriever.df[retriever.df[genotype_col].astype(str).str.lower() == name.lower()]
     if row.empty:
@@ -187,6 +198,7 @@ async def get_genotype_details(name: str):
 @app.get("/api/recommend")
 async def get_recommendations(goal: str):
     """AI breeding recommendations"""
+    load_models()
     rec_text, kg_fig = enhanced_engine.recommend_optimized_cross(goal)
     return {
         "text": rec_text,
@@ -196,6 +208,7 @@ async def get_recommendations(goal: str):
 @app.get("/api/kg")
 async def get_global_kg():
     """Return the global 3D Knowledge Graph"""
+    load_models()
     try:
         fig = enhanced_engine.visualizer.create_3d_knowledge_graph(width=1000, height=600)
         return json.loads(pio.to_json(fig))
@@ -206,6 +219,7 @@ async def get_global_kg():
 @app.get("/api/traits")
 async def get_trait_correlation(t1: str = "Yield_per_plant", t2: str = "Height", t3: str = "Grain_weight"):
     """Return 3D Trait Correlation plot"""
+    load_models()
     try:
         fig = enhanced_engine.visualizer.create_trait_correlation_3d(retriever.df, traits=[t1, t2, t3], width=1000, height=600)
         return json.loads(pio.to_json(fig))
@@ -216,6 +230,7 @@ async def get_trait_correlation(t1: str = "Yield_per_plant", t2: str = "Height",
 @app.get("/api/map")
 async def get_map_data():
     """Return state-level variety distribution as card data"""
+    load_models()
     states = retriever.df["State"].dropna().unique()
     map_data = []
     for s in states:
@@ -226,6 +241,7 @@ async def get_map_data():
 @app.get("/api/mapfig")
 async def get_india_map_figure(variety: str = None):
     """Return a Plotly ScatterGeo figure. Optional ?variety=NAME filters by cultivated variety."""
+    load_models()
     import plotly.graph_objects as go
 
     STATE_COORDS = {
