@@ -15,9 +15,6 @@ logger = logging.getLogger(__name__)
 # Add parent dir to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from models.retriever_bio import BioRetriever
-from models.predictor_xgboost import PhenotypePredictor
-from models.enhanced_recommendation_engine import EnhancedRecommendationEngine
 from utils.config import DATASET_PATH
 
 app = FastAPI(title="Agri-Tech API")
@@ -39,6 +36,10 @@ def load_models():
     global retriever, predictor, enhanced_engine
     if retriever is None:
         try:
+            from models.retriever_bio import BioRetriever
+            from models.predictor_xgboost import PhenotypePredictor
+            from models.enhanced_recommendation_engine import EnhancedRecommendationEngine
+
             logger.info("⏳ Loading models (lazy-load)...")
             retriever = BioRetriever(DATASET_PATH)
             predictor = PhenotypePredictor(DATASET_PATH)
